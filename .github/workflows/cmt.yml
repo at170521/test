@@ -1,0 +1,11 @@
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  comment-trigger:
+    runs-on: ubuntu-latest
+    if: github.event.comment.body == '/deploy'
+    steps:
+      - name: Run deployment script
+        run: bash deploy.sh
