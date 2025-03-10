@@ -1,38 +1,32 @@
-name: Add Comment for issue
-
+# Apply potential regression label on issues
+name: issue-regression-label
 on:
   issues:
-    types: [opened]
-
+    types: [opened, edited]
 jobs:
-  check_issue_title:
-    name: Check issue
+  add-regression-label:
     runs-on: ubuntu-latest
-    env:
-      TITLE_PASSED: "T"
-      ISSUE_TITLE: ${{ github.event.issue.title }}
     permissions:
       issues: write
-    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Check Issue
-        shell: bash
-        run: |
-          echo "Issue title: ${ISSUE_TITLE//\"/\\\"}"
-
-          cat >> check_title.py << EOF
-          import re
-          import sys
-          check_str = sys.argv[1]
-          pattern = re.compile(r'[\u4e00-\u9fa5]')
-          match = pattern.search(check_str)
-          if match:
-              print("TITLE_PASSED=F")
-          else:
-              print("TITLE_PASSED=T")
-          EOF
-          
-          python3 check_title.py "${ISSUE_TITLE//\"/\\\"}" >> "$GITHUB_ENV"
-          cat $GITHUB_ENV
+    - name: Fetch template body
+      id: check_regression
+      uses: actions/github-script@v7
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TEMPLATE_BODY: ${{ github.event.issue.body }}
+      with:
+        script: |
+          const regressionPattern = /\[x\] Select this option if this issue appears to be a regression\./i;
+          const template = `${process.env.TEMPLATE_BODY}`
+          const match = regressionPattern.test(template);
+          core.setOutput('is_regression', match);
+    - name: Manage regression label
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if [ "${{ steps.check_regression.outputs.is_regression }}" == "true" ]; then
+          gh issue edit ${{ github.event.issue.number }} --add-label "potential-regression" -R ${{ github.repository }}
+        else
+          gh issue edit ${{ github.event.issue.number }} --remove-label "potential-regression" -R ${{ github.repository }}
+        fi
