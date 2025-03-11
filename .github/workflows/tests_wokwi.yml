@@ -9,10 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-        mkdir -p artifacts/parent-artifacts/
-        printf "${{ github.sha }}" > artifacts/parent-artifacts/sha.txt
-        printf "pull_request" > artifacts/parent-artifacts/event.txt
-        printf "success" > artifacts/parent-artifacts/conclusion.txt
-        printf "" > artifacts/parent-artifacts/action.txt
-        # PAYLOAD
-        printf "foo'; console.log('CODE INJECTION'); //" > artifacts/parent-artifacts/ref.txt
+          mkdir -p artifacts
+          printf "${{ github.sha }}" > artifacts/sha.txt
+          printf "pull_request" > artifacts/event.txt
+          printf "success" > artifacts/conclusion.txt
+          printf "" > artifacts/action.txt
+          # PAYLOAD
+          printf "foo'; console.log('CODE INJECTION'); //" > artifacts/ref.txt
