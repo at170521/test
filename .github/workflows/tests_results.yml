@@ -1,146 +1,112 @@
-name: Publish and clean test results
+# ------------------------------------------------------------------ #
+#                                                                    #
+#           SymPy CI script to comment on a PR                       #
+#                                                                    #
+#   Runs after the main tests are complete and reports results.      #
+#                                                                    #
+# ------------------------------------------------------------------ #
+
+name: Report CI results to PR
 
 on:
   workflow_run:
-    workflows: ["Wokwi tests"]
-    types:
-      - completed
-
-# No permissions by default
-permissions: { contents: read }
+    # test is the name given for the workflow in runtests.yml
+    workflows: ["test"]
+    types: [completed]
 
 jobs:
-  unit-test-results:
-    name: Unit Test Results
-    if: |
-      github.event.workflow_run.conclusion == 'success' ||
-      github.event.workflow_run.conclusion == 'failure' ||
-      github.event.workflow_run.conclusion == 'timed_out'
+  comment-on-pr:
     runs-on: ubuntu-latest
-    permissions:
-        actions: write
-        statuses: write
-        checks: write
-        pull-requests: write
-        contents: write
+    # Only run if the tests passed:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: gh-pages
 
-      - name: Download and Extract Artifacts
+        # The previous workflow stored the issue number for the PR. We need it
+        # here to be able to comment on the PR
+
+      - name: Download benchmarks
         uses: dawidd6/action-download-artifact@v6
         with:
-          run_id: ${{ github.event.workflow_run.id }}
-          path: ./artifacts
+          workflow: runtests.yml
+          workflow_conclusion: success
+          name: pr_number
 
-      - name: Get original info
-        run: |
-          original_event=$(cat ./artifacts/parent-artifacts/event.txt)
-          original_action=$(cat ./artifacts/parent-artifacts/action.txt)
-          original_sha=$(cat ./artifacts/parent-artifacts/sha.txt)
-          original_ref=$(cat ./artifacts/parent-artifacts/ref.txt)
-          original_conclusion=$(cat ./artifacts/parent-artifacts/conclusion.txt)
-          echo "original_event=$original_event" >> $GITHUB_ENV
-          echo "original_action=$original_action" >> $GITHUB_ENV
-          echo "original_sha=$original_sha" >> $GITHUB_ENV
-          echo "original_ref=$original_ref" >> $GITHUB_ENV
-          echo "original_conclusion=$original_conclusion" >> $GITHUB_ENV
+      - name: Read the PR number
+        id: pr_number_reader
+        run: echo "pr_number=$(cat pr_number.txt)" >> $GITHUB_OUTPUT
 
-          echo "original_event = $original_event"
-          echo "original_action = $original_action"
-          echo "original_sha = $original_sha"
-          echo "original_ref = $original_ref"
-          echo "original_conclusion = $original_conclusion"
+      - name: Show PR number
+        run: echo ${{ steps.pr_number_reader.outputs.pr_number }}
 
-      - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        # This may be running after a push with no associated PR in which case
+        # the PR number variable is empty. All further steps will be skipped in
+        # that case.
+
+        # Retrieve benchmark results
+
+      - name: Download benchmarks
+        if: ${{ steps.pr_number_reader.outputs.pr_number != '' }}
+        uses: dawidd6/action-download-artifact@v6
         with:
-          commit: ${{ env.original_sha }}
-          event_file: ./artifacts/parent-artifacts/event_file/event.json
-          event_name: ${{ env.original_event }}
-          files: ./artifacts/**/*.xml
-          action_fail: true
+          workflow: runtests.yml
+          workflow_conclusion: success
+          name: benchmarks
 
-      - name: Fail if tests failed
-        if: ${{ env.original_conclusion == 'failure' || env.original_conclusion == 'timed_out' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out' }}
-        run: exit 1
+      - run: '! test -L pr_number.txt'
+      - run: '! test -L pr_vs_master_changed.txt'
+      - run: '! test -L master_vs_release_changed.txt'
 
-      - name: Clean up caches
-        if: always()
-        uses: actions/github-script@v7
+      - name: Read benchmark output 1
+        if: ${{ steps.pr_number_reader.outputs.pr_number != '' }}
+        id: pr_vs_master_changed
+        uses: juliangruber/read-file-action@v1.1.7
         with:
-          script: |
-            const ref = '${{ env.original_ref }}';
-            const key_prefix = 'tests-' + ref + '-';
+          path: pr_vs_master_changed.txt
 
-            if ('${{ env.original_event }}' == 'pull_request' && '${{ env.original_action }}' != 'closed') {
-              console.log('Skipping cache cleanup for open PR');
-              return;
-            }
-
-            await github.paginate(github.rest.actions.getActionsCacheList, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100,
-              key: key_prefix
-            }).then(caches => {
-              if (caches) {
-                for (const cache of caches) {
-                  console.log(`Deleting cache: ${cache.key}`);
-                  github.rest.actions.deleteActionsCacheById({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    cache_id: cache.id
-                  });
-                }
-              }
-            });
-
-      - name: Report conclusion
-        uses: actions/github-script@v7
-        if: always()
+      - name: Read benchmark output 2
+        if: ${{ steps.pr_number_reader.outputs.pr_number != '' }}
+        id: master_vs_release_changed
+        uses: juliangruber/read-file-action@v1.1.7
         with:
-          script: |
-            const owner = '${{ github.repository_owner }}';
-            const repo = '${{ github.repository }}'.split('/')[1];
-            const sha = '${{ env.original_sha }}';
-            core.debug(`owner: ${owner}`);
-            core.debug(`repo: ${repo}`);
-            core.debug(`sha: ${sha}`);
-            const { context: name, state } = (await github.rest.repos.createCommitStatus({
-              context: 'Runtime Tests / Report results (${{ env.original_event }} -> workflow_run -> workflow_run)',
-              owner: owner,
-              repo: repo,
-              sha: sha,
-              state: '${{ job.status }}',
-              description: '${{ job.status }}' == 'success' ? 'Runtime tests successful' : 'Runtime tests failed',
-              target_url: 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            })).data;
-            core.info(`${name} is ${state}`);
+          path: master_vs_release_changed.txt
 
-      - name: Create output folder
-        if: ${{ !cancelled() && (env.original_event == 'schedule' || env.original_event == 'workflow_dispatch') }}
-        run: |
-          rm -rf artifacts
-          mkdir -p runtime-tests-results
+        # The two steps below should create a new comment or update the
+        # existing comment (edit-mode: replace). Note that the opening line of
+        # the comment body is matched by body-includes so if that does not
+        # match then a new comment will always be created.
 
-      - name: Generate badge
-        if: ${{ !cancelled() && (env.original_event == 'schedule' || env.original_event == 'workflow_dispatch') }}
-        uses: jaywcjlove/generated-badges@v1.0.13
+      - name: Find Comment
+        if: ${{ steps.pr_number_reader.outputs.pr_number != '' }}
+        uses: peter-evans/find-comment@v3
+        id: fc
         with:
-          label: Runtime Tests
-          status: ${{ job.status }}
-          output: runtime-tests-results/badge.svg
-          color: ${{ job.status == 'success' && 'green' || 'red' }}
+          issue-number: ${{ steps.pr_number_reader.outputs.pr_number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Benchmark results from GitHub Actions
 
-      - name: Push badge
-        if: ${{ !cancelled() && (env.original_event == 'schedule' || env.original_event == 'workflow_dispatch') }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [[ `git status --porcelain` ]]; then
-            git add --all
-            git commit -m "Updated runtime tests badge"
-            git push origin HEAD:gh-pages
-          fi
+      - name: Create or update comment
+        if: ${{ steps.pr_number_reader.outputs.pr_number != '' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ steps.pr_number_reader.outputs.pr_number }}
+          body: |
+            Benchmark results from GitHub Actions
+
+            Lower numbers are good, higher numbers are bad. A ratio less than 1
+            means a speed up and greater than 1 means a slowdown. Green lines
+            beginning with `+` are slowdowns (the PR is slower then master or
+            master is slower than the previous release). Red lines beginning
+            with `-` are speedups.
+
+            Significantly changed benchmark results (PR vs master)
+            ```diff
+            ${{ steps.pr_vs_master_changed.outputs.content }}
+            ```
+            Significantly changed benchmark results (master vs previous release)
+            ```diff
+            ${{ steps.master_vs_release_changed.outputs.content }}
+            ```
+            Full benchmark results can be found as artifacts in GitHub Actions
+            (click on checks at the top of the PR).
+          edit-mode: replace
