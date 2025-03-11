@@ -13,6 +13,8 @@ jobs:
     name: Pack and Comment
     runs-on: 'ubuntu-22.04'
     steps:
-
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
       - name: Get Core Dependencies
         uses: ./.github/workflows/actions/get-core-dependencies
