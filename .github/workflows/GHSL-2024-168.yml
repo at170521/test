@@ -11,7 +11,7 @@ on:
 
 jobs:
   sipify:
-    if: github.event_name != 'issue_comment' || ( contains(github.event.comment.html_url, '/pull/') && github.event.comment.body == '/sipify' )
+    if: github.event_name != 'issue_comment' ||&& github.event.comment.body == '/sipify' )
     runs-on: [ubuntu-latest]
     steps:
 
