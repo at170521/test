@@ -1,20 +1,22 @@
-name: Pack and Comment
-# for each PR this workflow builds and then packs a Stencil tarball and then
-# posts a comment on the PR with a link to download the tarball, as well as an
-# example command for installing the tarball in a project.
+name: Run sipify
 
 on:
-  pull_request_target:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+  push:
     branches:
-      - '**'
+      - master
+      - release-*
 
 jobs:
-  pack:
-    name: Pack and Comment
-    runs-on: 'ubuntu-22.04'
+  sipify:
+    if: github.event_name != 'issue_comment' || ( contains(github.event.comment.html_url, '/pull/') && github.event.comment.body == '/sipify' )
+    runs-on: [ubuntu-latest]
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
-        
-      - name: Get Core Dependencies
-        uses: ./.github/workflows/actions/get-core-dependencies
+
+      
+      - name: run sipify
+        run: ./scripts/sipify_all.sh -m
+
+      
