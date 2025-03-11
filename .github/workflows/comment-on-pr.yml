@@ -3,7 +3,13 @@ on:
   workflow_run:
     workflows: ["Test Workflow"]
     types: [completed]
-
+    
+permissions:
+  actions: read  # Cho phép đọc workflow runs và artifacts
+  contents: read  # Đọc nội dung repo, nhưng không thể push code
+  pull-requests: write  # Cho phép bình luận và chỉnh sửa PR
+  checks: write  # Ghi vào check runs (nếu cần)
+  
 jobs:
   comment:
     runs-on: ubuntu-latest
