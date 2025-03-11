@@ -14,7 +14,5 @@ runs:
 
     - name: Install Dependencies
       run: |
-        npm ci \
-        && npm run install.jest
-
+        echo 123
       shell: bash
